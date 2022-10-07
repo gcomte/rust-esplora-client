@@ -55,6 +55,13 @@ pub struct OutputStatus {
     pub status: Option<TxStatus>,
 }
 
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct BlockStatus {
+    pub in_best_chain: bool,
+    pub height: Option<u32>,
+    pub next_best: Option<String>, // todo should be of type BlockHash
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct Tx {
     pub txid: Txid,

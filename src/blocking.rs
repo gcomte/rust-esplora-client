@@ -27,7 +27,7 @@ use bitcoin::hashes::hex::{FromHex, ToHex};
 use bitcoin::hashes::{sha256, Hash};
 use bitcoin::{BlockHash, BlockHeader, Script, Transaction, Txid};
 
-use crate::{Builder, Error, MerkleProof, OutputStatus, Tx, TxStatus};
+use crate::{BlockStatus, Builder, Error, MerkleProof, OutputStatus, Tx, TxStatus};
 
 #[derive(Debug, Clone)]
 pub struct BlockingClient {
@@ -154,6 +154,20 @@ impl BlockingClient {
         }
     }
 
+    /// Get a [`BlockHeader`] given a particular [`BlockHash`].
+    pub fn get_header_by_hash(&self, block_hash: &BlockHash) -> Result<BlockHeader, Error> {
+        let resp = self
+            .agent
+            .get(&format!("{}/block/{}/header", self.url, block_hash))
+            .call();
+
+        match resp {
+            Ok(resp) => Ok(deserialize(&Vec::from_hex(&resp.into_string()?)?)?),
+            Err(ureq::Error::Status(code, _)) => Err(Error::HttpResponse(code)),
+            Err(e) => Err(Error::Ureq(e)),
+        }
+    }
+
     /// Get a merkle inclusion proof for a [`Transaction`] with the given [`Txid`].
     pub fn get_merkle_proof(&self, txid: &Txid) -> Result<Option<MerkleProof>, Error> {
         let resp = self
@@ -219,6 +233,36 @@ impl BlockingClient {
 
         match resp {
             Ok(resp) => Ok(resp.into_string()?.parse()?),
+            Err(ureq::Error::Status(code, _)) => Err(Error::HttpResponse(code)),
+            Err(e) => Err(Error::Ureq(e)),
+        }
+    }
+
+    /// Get the block height given a particular [`BlockHash`].
+    pub fn get_height_by_hash(&self, block_hash: &BlockHash) -> Result<Option<u32>, Error> {
+        let block_status = self.get_block_status(&block_hash)?;
+
+        if let Some(block_height) = block_status.height {
+            return Ok(Some(block_height));
+        }
+
+        Ok(None)
+    }
+
+    /// Get the block status given a particular [`BlockHash`].
+    pub fn get_block_status(&self, block_hash: &BlockHash) -> Result<BlockStatus, Error> {
+        // todo think of invalid, non-existing/orphaned blocks:
+        // invalid: https://blockstream.info/api/block/1337/status
+        // non-existing: https://blockstream.info/api/block/000000000000000000181b1a2344620f66868a723c0c4d5b24e4be8bdfc35a7d/status
+        // orphaned: https://blockstream.info/api/block/000000000000000000181b1a2354620f66868a723c0c4d5b24e4be8bdfc35a7f/status
+
+        let resp = self
+            .agent
+            .get(&format!("{}/block/{}/status", self.url, block_hash))
+            .call();
+
+        match resp {
+            Ok(resp) => Ok(resp.into_json()?),
             Err(ureq::Error::Status(code, _)) => Err(Error::HttpResponse(code)),
             Err(e) => Err(Error::Ureq(e)),
         }
